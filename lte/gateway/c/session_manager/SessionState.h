@@ -42,6 +42,11 @@ static SessionStateUpdateCriteria UNUSED_UPDATE_CRITERIA;
 struct RulesToProcess {
   std::vector<std::string> static_rules;
   std::vector<PolicyRule> dynamic_rules;
+  // If this vector is set, then it has PolicyRule definitions for both static
+  // and dynamic rules
+  // This field should be used for all activation calls
+  // TODO migrate deactivation calls to use this as well in the future
+  std::vector<PolicyRule> rules;
 };
 
 // Used to transform the proto message RuleSet into a more useful structure

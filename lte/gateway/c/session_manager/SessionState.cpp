@@ -552,11 +552,18 @@ void SessionState::apply_session_static_rule_set(
   RuleLifetime lifetime;
   // Go through the rule set and install any rules not yet installed
   for (const auto& static_rule_id : static_rules) {
+    PolicyRule rule;
+    if (!static_rules_.get_rule(static_rule_id, &rule)) {
+      MLOG(MERROR) << "Static rule " << static_rule_id
+                   << " is not found. Skipping activation";
+      continue;
+    }
     if (!is_static_rule_installed(static_rule_id)) {
       MLOG(MINFO) << "Installing static rule " << static_rule_id << " for "
                   << session_id_;
       activate_static_rule(static_rule_id, lifetime, uc);
       rules_to_activate.static_rules.push_back(static_rule_id);
+      rules_to_activate.rules.push_back(rule);
     }
   }
   std::vector<std::string> static_rules_to_deactivate;
@@ -564,7 +571,14 @@ void SessionState::apply_session_static_rule_set(
   // Go through the existing rules and uninstall any rule not in the rule set
   for (const auto static_rule_id : active_static_rules_) {
     if (static_rules.find(static_rule_id) == static_rules.end()) {
+      PolicyRule rule;
+      if (!static_rules_.get_rule(static_rule_id, &rule)) {
+        MLOG(MERROR) << "Static rule" << static_rule_id
+                     << " is not found. Skipping deactivation";
+        continue;
+      }
       rules_to_deactivate.static_rules.push_back(static_rule_id);
+      rules_to_deactivate.rules.push_back(rule);
     }
   }
   // Do the actual removal separately so we're not modifying the vector while
@@ -588,6 +602,7 @@ void SessionState::apply_session_dynamic_rule_set(
                   << " for " << session_id_;
       insert_dynamic_rule(dynamic_rule_pair.second, lifetime, uc);
       rules_to_activate.dynamic_rules.push_back(dynamic_rule_pair.second);
+      rules_to_activate.rules.push_back(dynamic_rule_pair.second);
     }
   }
   std::vector<PolicyRule> active_dynamic_rules;
@@ -598,6 +613,7 @@ void SessionState::apply_session_dynamic_rule_set(
                   << session_id_;
       remove_dynamic_rule(dynamic_rule.id(), nullptr, uc);
       rules_to_deactivate.dynamic_rules.push_back(dynamic_rule);
+      rules_to_deactivate.rules.push_back(dynamic_rule);
     }
   }
 }
@@ -1421,6 +1437,20 @@ void SessionState::get_rules_per_credit_key(
       charging_key, rulesToProcess.static_rules);
   dynamic_rules_.get_rule_definitions_for_charging_key(
       charging_key, rulesToProcess.dynamic_rules);
+
+  // Fill in the std::vector<PolicyRule> that contains both static and dynamic
+  // rules
+  for (auto rule_id : rulesToProcess.static_rules) {
+    PolicyRule rule;
+    if (static_rules_.get_rule(rule_id, &rule)) {
+      rulesToProcess.rules.push_back(rule);
+    } else {
+      MLOG(MWARNING) << "Static rule " << rule_id
+                     << " is not found in the system";
+    }
+  }
+  dynamic_rules_.get_rule_definitions_for_charging_key(
+      charging_key, rulesToProcess.rules);
 }
 
 uint64_t SessionState::get_charging_credit(

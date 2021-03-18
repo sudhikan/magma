@@ -802,7 +802,7 @@ void LocalEnforcer::schedule_static_rule_deactivation(
 
         auto& session_uc = session_update[imsi][session_id];
         if (!session->deactivate_static_rule(rule_id, session_uc)) {
-          MLOG(MWARNING) << "Could not find rule " << rule_id << "for "
+          MLOG(MWARNING) << "Could not find rule " << rule_id << " for "
                          << session_id << " during static rule removal";
         }
         session_store_.update_sessions(session_update);
@@ -1701,8 +1701,9 @@ void LocalEnforcer::propagate_rule_updates_to_pipelined(
   }
   if (always_send_activate ||
       rules_to_process_is_not_empty(rules_to_activate)) {
-    const auto ambr                  = config.get_apn_ambr();
-    const auto msisdn                = config.common_context.msisdn();
+    const auto ambr   = config.get_apn_ambr();
+    const auto msisdn = config.common_context.msisdn();
+    /**
     std::vector<PolicyRule> policies = rules_to_activate.dynamic_rules;
     for (const std::string& rule_id : rules_to_activate.static_rules) {
       PolicyRule policy;
@@ -1713,11 +1714,13 @@ void LocalEnforcer::propagate_rule_updates_to_pipelined(
                        << " doesn't exist in RuleStore, skipping...";
       }
     }
+     **/
     pipelined_client_->activate_flows_for_rules(
-        imsi, ip_addr, ipv6_addr, teids, msisdn, ambr, policies,
+        imsi, ip_addr, ipv6_addr, teids, msisdn, ambr, rules_to_activate.rules,
         std::bind(
             &LocalEnforcer::handle_activate_ue_flows_callback, this, imsi,
-            ip_addr, ipv6_addr, teids, msisdn, ambr, policies, _1, _2));
+            ip_addr, ipv6_addr, teids, msisdn, ambr, rules_to_activate.rules,
+            _1, _2));
   }
 }
 
@@ -1745,15 +1748,21 @@ void LocalEnforcer::process_rules_to_remove(
     RulesToProcess& rules_to_deactivate, SessionStateUpdateCriteria& uc) {
   for (const auto& rule_id : rules_to_remove) {
     // Try to remove as dynamic rule first
-    PolicyRule dy_rule;
+    PolicyRule dy_rule, st_rule;
+    MLOG(MINFO) << "does static rule exist ? "
+                << rule_store_->get_rule(rule_id, &st_rule);
     bool is_dynamic = session->remove_dynamic_rule(rule_id, &dy_rule, uc);
-    if (is_dynamic) {
+    if (is_dynamic) {  // dynamic rule
       rules_to_deactivate.dynamic_rules.push_back(dy_rule);
-    } else {
-      if (!session->deactivate_static_rule(rule_id, uc))
-        MLOG(MWARNING) << "Could not find rule " << rule_id << "for IMSI "
-                       << imsi << " during static rule removal";
+      rules_to_deactivate.rules.push_back(dy_rule);
+    } else if (  // static rule
+        rule_store_->get_rule(rule_id, &st_rule) &&
+        session->deactivate_static_rule(rule_id, uc)) {
+      rules_to_deactivate.rules.push_back(st_rule);
       rules_to_deactivate.static_rules.push_back(rule_id);
+    } else {
+      MLOG(MWARNING) << "Could not find rule " << rule_id << " for " << imsi
+                     << " during static rule removal";
     }
   }
 }
@@ -1795,6 +1804,12 @@ void LocalEnforcer::process_rules_to_install(
       // Ignore them here.
       continue;
     }
+    PolicyRule static_rule;
+    if (!rule_store_->get_rule(id, &static_rule)) {
+      MLOG(MERROR) << "static rule " << id
+                   << " is not found, skipping install...";
+    }
+
     RuleLifetime lifetime(rule_install);
     if (lifetime.activation_time > current_time) {
       session.schedule_static_rule(id, lifetime, uc);
@@ -1802,6 +1817,8 @@ void LocalEnforcer::process_rules_to_install(
           imsi, session_id, id, lifetime.activation_time);
     } else {
       session.activate_static_rule(id, lifetime, uc);
+      // Set up rules_to_activate
+      rules_to_activate.rules.push_back(static_rule);
       rules_to_activate.static_rules.push_back(id);
     }
 
@@ -1814,27 +1831,32 @@ void LocalEnforcer::process_rules_to_install(
         MLOG(MWARNING) << "Could not find rule " << id << "for " << session_id
                        << " during static rule removal";
       }
+
+      rules_to_deactivate.rules.push_back(static_rule);
       rules_to_deactivate.static_rules.push_back(id);
     }
   }
 
   for (auto& rule_install : dynamic_rule_installs) {
-    auto rule_id = rule_install.policy_rule().id();
+    PolicyRule dynamic_rule = rule_install.policy_rule();
+    auto rule_id            = dynamic_rule.id();
     RuleLifetime lifetime(rule_install);
     if (lifetime.activation_time > current_time) {
-      session.schedule_dynamic_rule(rule_install.policy_rule(), lifetime, uc);
+      session.schedule_dynamic_rule(dynamic_rule, lifetime, uc);
       schedule_dynamic_rule_activation(
           imsi, session_id, rule_id, lifetime.activation_time);
     } else {
-      session.insert_dynamic_rule(rule_install.policy_rule(), lifetime, uc);
-      rules_to_activate.dynamic_rules.push_back(rule_install.policy_rule());
+      session.insert_dynamic_rule(dynamic_rule, lifetime, uc);
+      rules_to_activate.dynamic_rules.push_back(dynamic_rule);
+      rules_to_activate.rules.push_back(dynamic_rule);
     }
     if (lifetime.deactivation_time > current_time) {
       schedule_dynamic_rule_deactivation(
           imsi, session_id, rule_id, lifetime.deactivation_time);
     } else if (lifetime.deactivation_time > 0) {
-      session.remove_dynamic_rule(rule_id, NULL, uc);
-      rules_to_deactivate.dynamic_rules.push_back(rule_install.policy_rule());
+      session.remove_dynamic_rule(rule_id, nullptr, uc);
+      rules_to_deactivate.dynamic_rules.push_back(dynamic_rule);
+      rules_to_deactivate.rules.push_back(dynamic_rule);
     }
   }
 }

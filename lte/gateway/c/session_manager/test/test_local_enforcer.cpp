@@ -173,7 +173,7 @@ class LocalEnforcerTest : public ::testing::Test {
   SessionConfig test_cfg_;
   folly::EventBase* evb;
 };
-
+/**
 TEST_F(LocalEnforcerTest, test_init_cwf_session_credit) {
   insert_static_rule(1, "", "rule1");
 
@@ -1486,7 +1486,7 @@ TEST_F(LocalEnforcerTest, test_installing_rules_with_activation_time) {
       session_store->create_sessions(IMSI1, std::move(session_map[IMSI1]));
   EXPECT_TRUE(success);
 }
-
+**/
 TEST_F(LocalEnforcerTest, test_usage_monitors) {
   // insert key rule mapping
   insert_static_rule(1, "1", "both_rule");
@@ -1510,6 +1510,11 @@ TEST_F(LocalEnforcerTest, test_usage_monitors) {
   create_monitor_update_response(
       IMSI1, SESSION_ID_1, "4", MonitoringLevel::SESSION_LEVEL, 2128,
       response.mutable_usage_monitors()->Add());
+  response.mutable_static_rules()->Add()->set_rule_id("both_rule");
+  response.mutable_static_rules()->Add()->set_rule_id("ocs_rule");
+  response.mutable_static_rules()->Add()->set_rule_id("pcrf_only");
+  response.mutable_static_rules()->Add()->set_rule_id("pcrf_split");
+
   local_enforcer->init_session(
       session_map, IMSI1, SESSION_ID_1, test_cfg_, response);
   local_enforcer->update_tunnel_ids(
@@ -1640,7 +1645,7 @@ TEST_F(LocalEnforcerTest, test_usage_monitors) {
   local_enforcer->update_session_credits_and_rules(
       session_map, update_response, update);
 }
-
+/**
 // Test an insertion of a usage monitor, both session_level and rule level,
 // and then a deletion. Additionally, test
 // that a rule update from PipelineD for a deleted usage monitor should NOT
@@ -2941,6 +2946,7 @@ TEST_F(LocalEnforcerTest, test_rar_dynamic_rule_modification) {
   EXPECT_EQ(2, policy_out.rating_group());
   EXPECT_TRUE(session_store->update_sessions(session_ucs));
 }
+**/
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
