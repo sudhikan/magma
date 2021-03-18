@@ -478,8 +478,8 @@ class SessionState {
 
   bool is_credit_in_final_unit_state(const CreditKey& charging_key) const;
 
-  void get_final_action_restrict_rules(
-      const CreditKey& charging_key, std::vector<std::string>& restrict_rules);
+  std::vector<PolicyRule> get_final_action_restrict_rules(
+      const CreditKey& charging_key) const;
 
   // Monitors
   bool receive_monitor(

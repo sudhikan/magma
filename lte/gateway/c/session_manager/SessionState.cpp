@@ -2042,13 +2042,20 @@ bool SessionState::is_credit_in_final_unit_state(
       it->second->service_state == SERVICE_RESTRICTED);
 }
 
-void SessionState::get_final_action_restrict_rules(
-    const CreditKey& charging_key, std::vector<std::string>& restrict_rules) {
+std::vector<PolicyRule> SessionState::get_final_action_restrict_rules(
+    const CreditKey& charging_key) const {
+  std::vector<PolicyRule> rules;
   auto it = credit_map_.find(charging_key);
   if (it == credit_map_.end()) {
-    return;
+    return rules;
   }
-  restrict_rules = it->second->final_action_info.restrict_rules;
+  for (std::string rule_id : it->second->final_action_info.restrict_rules) {
+    PolicyRule rule;
+    if (static_rules_.get_rule(rule_id, &rule)) {
+      rules.push_back(rule);
+    }
+  }
+  return rules;
 }
 
 // QoS/Bearer Management
